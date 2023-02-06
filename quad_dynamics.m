@@ -1,3 +1,4 @@
+
 function Xdot = quad_dynamics(X, U)
 
     % Use NED frame, 12 states, 4 inputs for standard quad model x, y, z,

@@ -147,13 +147,14 @@ args.lbx(13*(N+1)+4:4:13*(N+1)+4*N,1) = -pi/2; args.ubx(13*(N+1)+4:4:13*(N+1)+4*
 % THE SIMULATION LOOP SHOULD START FROM HERE
 %-------------------------------------------
 t0 = 0;
-x0 = zeros(13, 1); x0(1) = 20; %x(10) = pi/2; 
+x0 = zeros(13, 1); x0(1) = 10; %x(10) = pi/2; 
 x(13) = 15; % initial state
 
 xs = zeros(13, 1); xs(1) = 26.9134;% x(10) = pi/2; 
 x(13) = 30;% goal state
 
 xx(:,1) = x0; % xx contains the history of states
+
 t(1) = t0;
 
 u_trim = [7.4270*9.81; 0.0; 0.0;0.0];
@@ -204,7 +205,6 @@ while(norm(x0-xs,2) > 5e-2 && mpciter < sim_tim / dt)
     xx(:,mpciter+2) = x0;
     X0 = reshape(full(sol.x(1:n_states*(N+1)))',n_states,N+1)'; % get solution TRAJECTORY
     % Shift trajectory to initialize the next step
-   
     X0 = [X0(2:end,:);X0(end,:)];
     mpciter;
     ss_error = norm((x0-xs),2)
