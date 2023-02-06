@@ -17,17 +17,17 @@ function Xdot = quad_dynamics(X, U)
     pitch_dot = X(8);
     yaw_dot = X(9);
 
-    tilt_angle = X(10);
+    %tilt_angle = X(10);
 
-    roll_dot_last = X(11);
-    pitch_dot_last = X(12);
-    yaw_dot_last = X(13);
+    roll_dot_last = X(10);
+    pitch_dot_last = X(11);
+    yaw_dot_last = X(12);
 
-    thrust_last= X(14);
+    thrust_last= X(13);
     
     Thrust = U(1);
-    Tilt_speed = U(2);
-    rpy_MPC = U(3:5);
+    %Tilt_speed = U(2);
+    rpy_MPC = U(2:4);
     
     R_i2b = GetRotationMatrix(roll, pitch, yaw);
     R_b2i = R_i2b';
@@ -52,6 +52,7 @@ function Xdot = quad_dynamics(X, U)
 
     % x(1:3) update equation
     F_aero = CalcAeroForce(V);
+    tilt_angle = 0;
     accel = CalcAccel(F_aero,Thrust,rpy,tilt_angle);
     accel = accel + g;
 
@@ -60,16 +61,17 @@ function Xdot = quad_dynamics(X, U)
     body_rate_sp = diag([2,2,2]) * (rpy_sp - rpy);
     torque = diag([2,2,2]) * (body_rate_sp - rpy_dot) + diag([1,1,1]) * (last_rpy_dot - rpy_dot);
 
-    
-    Xdot = SX.sym('Xdot', 14);
+
+    Xdot = SX.sym('Xdot', 13);
     Xdot(1:3) = accel;
     Xdot(4:6) = [roll_dot;pitch_dot;yaw_dot];
     Xdot(7:9) = I_inv*(torque);
-    Xdot(10) = Tilt_speed;
-    Xdot(11:13) = [roll_dot_last;pitch_dot_last;yaw_dot_last];
-    Xdot(14) = thrust_last;
+    %Xdot(10) = Tilt_speed;
+    Xdot(10:12) = [roll_dot_last;pitch_dot_last;yaw_dot_last];
+    Xdot(13) = thrust_last;
 
 end
+
 
 
 function Rot_BI = GetRotationMatrix(roll, pitch, yaw)

@@ -6,7 +6,8 @@ start_time = 1;
 
 
 titles = ["vx", "vy", "vz", "Roll", "Pitch", "Yaw", "Roll_dot","pitch_dot", "yaw_dot"...
-    , "tilt_angle","Roll_dot_last","pitch_dot_last", "yaw_dot_last",'last_thrust'];
+    , "Roll_dot_last","pitch_dot_last", "yaw_dot_last",'last_thrust'];
+%"tilt_angle",
 
 
 figure
@@ -23,10 +24,10 @@ for k = 1:14
     title(titles(k))
 end
 
-control_titles = ["Thrust", "mx", "my", "mz"];
+control_titles = ["Roll", "Pitch", "Yaw","tilt_speed", "Thrust"];
 figure
 for i = 1:5
-    subplot(2, 2, i)
+    subplot(1, 5, i)
     plot(u_cl(:,i))
     title(control_titles(i))    
 end

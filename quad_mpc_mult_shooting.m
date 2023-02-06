@@ -7,7 +7,7 @@ addpath('Users/rapstar/Desktop/quad_dyn_mpc/casadi-matlabR2014a-v3.5.5')
 import casadi.*
 
 dt = 0.02; %[s]
-N = 5; % prediction horizon
+N = 50; % prediction horizon
 
 % bound = Boundary();
 
@@ -30,7 +30,7 @@ Yaw_dot = SX.sym('Yaw_dot');
 rpy_dot = [Roll_dot; Pitch_dot; Yaw_dot];
 
 % Tilt angle parametrization
-tilt_angle = SX.sym('tilt_angle');
+%tilt_angle = SX.sym('tilt_angle');
 
 % Last body rate parametrization
 Roll_dot_last = SX.sym('Roll_dot_last');
@@ -40,7 +40,7 @@ last_rpy_dot = [Roll_dot_last; Pitch_dot_last; Yaw_dot_last];
 last_thrust = SX.sym('last_thrust');
 
 % 14x1
-states = [V; rpy; rpy_dot; tilt_angle; last_rpy_dot; last_thrust];
+states = [V; rpy; rpy_dot; last_rpy_dot; last_thrust];% tilt_angle
 n_states = length(states);
 
 Roll_MPC = SX.sym('Roll_MPC');
@@ -49,11 +49,11 @@ Yaw_MPC = SX.sym('Yaw_MPC');
 rpy_MPC = [Roll_MPC; Pitch_MPC; Yaw_MPC];
 
 % Tilt speed parametrization
-tilt_speed = SX.sym('tilt_speed');
+%tilt_speed = SX.sym('tilt_speed');
 % Thrust
 Thrust = SX.sym('Thrust');
 % Control input
-controls= [Thrust; tilt_speed; rpy_MPC];
+controls= [Thrust; rpy_MPC]; %tilt_speed; rpy_MPC];
 
 
 n_controls = length(controls);
@@ -63,6 +63,7 @@ nvar = n_states + n_controls;
 rhs = quad_dynamics(states, controls); % system r.h.s
 
 f = Function('f',{states,controls},{rhs}); % nonlinear mapping function f(x,u)
+
 U = SX.sym('U',n_controls,N); % Decision variables (controls)
 %P = SX.sym('P',n_states + N*(n_states+n_controls));
 P = SX.sym('P',n_states + n_states);
@@ -74,8 +75,9 @@ X = SX.sym('X',n_states,(N+1));
 obj = 0; % Objective function
 g = [];  % constraints vector
 
-Q = eye(n_states,n_states); Q(1:3,1:3) = diag([1;1;10000]); Q(4:6,4:6) = 0.1*eye(3); Q(7:9,7:9) = diag([1;1;1000]);% weighing matrices (states)
-R = eye(n_controls,n_controls); R(1,1) = 0.01; R(2:4,2:4) = 0.05*eye(3); % weighing matrices (controls)
+Q = eye(n_states,n_states); Q(1:3,1:3) = diag([100;100;100]); Q(4:6,4:6) = diag([20;20;0.1]); Q(7:9,7:9) = diag([5;5;0.01]);% weighing matrices (states)
+Q(10:13,10:13) = diag([0.01;0.01;0.01;20]); 
+R = eye(n_controls,n_controls); R(1,1) = 0.1; R(2:4,2:4) = 0.05*eye(3); % weighing matrices (controls)
 
 st  = X(:,1); % initial state
 g = [g;st-P(1:n_states)]; % initial condition constraints
@@ -116,25 +118,26 @@ args.lbg(1:n_states*(N+1)) = -1e-20;
 args.ubg(1:n_states*(N+1)) = 1e-20;
 
 % input and states constraints
-args.lbx(1:14:14*(N+1),1) = -40; args.ubx(1:14:14*(N+1),1) = 40; %V in m/s
-args.lbx(2:14:14*(N+1),1) = -40; args.ubx(2:14:14*(N+1),1) = 40;
-args.lbx(3:14:14*(N+1),1) = -10; args.ubx(3:14:14*(N+1),1) = 10;
-args.lbx(4:14:14*(N+1),1) = -pi/4; args.ubx(4:14:14*(N+1),1) = pi/4; %rpy in radian
-args.lbx(5:14:14*(N+1),1) = -pi/4; args.ubx(5:14:14*(N+1),1) = pi/4;
-args.lbx(6:14:14*(N+1),1) = -inf; args.ubx(6:14:14*(N+1),1) = inf;
-args.lbx(7:14:14*(N+1),1) = -pi; args.ubx(7:14:14*(N+1),1) = pi; %rpy_dot in radian
-args.lbx(8:14:14*(N+1),1) = -pi; args.ubx(6:14:14*(N+1),1) = pi;
-args.lbx(9:14:14*(N+1),1) = -pi; args.ubx(9:14:14*(N+1),1) = pi;
-args.lbx(10:14:14*(N+1),1) = deg2rad(-7); args.ubx(10:14:14*(N+1),1) = pi/2; %servo angle in degree
-args.lbx(11:14:14*(N+1),1) = -pi; args.ubx(11:14:14*(N+1),1) = pi; %rpy_dot last set points in degree
-args.lbx(12:14:14*(N+1),1) = -pi; args.ubx(12:14:14*(N+1),1) = pi;
-args.lbx(13:14:14*(N+1),1) = -pi; args.ubx(13:14:14*(N+1),1) = pi;
-args.lbx(14:14:14*(N+1),1) = 0; args.ubx(14:14:14*(N+1),1) = 105; %thrust in N calculated from max pitch angle and weight
-args.lbx(14*(N+1)+1:5:14*(N+1)+5*N,1) = 0; args.ubx(14*(N+1)+1:5:14*(N+1)+5*N,1) = 105; %thrust in Newton calculated from max pitch angle and weight
-args.lbx(14*(N+1)+2:5:14*(N+1)+5*N,1) = -pi/4; args.ubx(14*(N+1)+2:5:14*(N+1)+5*N,1) = pi/4; %servo angle speed in degree/s
-args.lbx(14*(N+1)+3:5:14*(N+1)+5*N,1) = -pi/4; args.ubx(14*(N+1)+3:5:14*(N+1)+5*N,1) = pi/4; %rpy_MPC in degree
-args.lbx(14*(N+1)+4:5:14*(N+1)+5*N,1) = -pi/4; args.ubx(14*(N+1)+4:5:14*(N+1)+5*N,1) = pi/4;
-args.lbx(14*(N+1)+5:5:14*(N+1)+5*N,1) = -pi/2; args.ubx(14*(N+1)+5:5:14*(N+1)+5*N,1) = pi/2;
+args.lbx(1:13:13*(N+1),1) = -40; args.ubx(1:13:13*(N+1),1) = 40; %V in m/s
+args.lbx(2:13:13*(N+1),1) = -40; args.ubx(2:13:13*(N+1),1) = 40;
+args.lbx(3:13:13*(N+1),1) = -10; args.ubx(3:13:13*(N+1),1) = 10;
+args.lbx(4:13:13*(N+1),1) = -pi/4; args.ubx(4:13:13*(N+1),1) = pi/4; %rpy in radian
+args.lbx(5:13:13*(N+1),1) = -pi/4; args.ubx(5:13:13*(N+1),1) = pi/4;
+args.lbx(6:13:13*(N+1),1) = -inf; args.ubx(6:13:13*(N+1),1) = inf;
+args.lbx(7:13:13*(N+1),1) = -pi; args.ubx(7:13:13*(N+1),1) = pi; %rpy_dot in radian
+args.lbx(8:13:13*(N+1),1) = -pi; args.ubx(6:13:13*(N+1),1) = pi;
+args.lbx(9:13:13*(N+1),1) = -pi; args.ubx(9:13:13*(N+1),1) = pi;
+%args.lbx(10:13:13*(N+1),1) = deg2rad(-7); args.ubx(10:13:13*(N+1),1) = pi/2; %servo angle in degree
+args.lbx(10:13:13*(N+1),1) = -pi; args.ubx(10:13:13*(N+1),1) = pi; %rpy_dot last set points in degree
+args.lbx(11:13:13*(N+1),1) = -pi; args.ubx(11:13:13*(N+1),1) = pi;
+args.lbx(12:13:13*(N+1),1) = -pi; args.ubx(12:13:13*(N+1),1) = pi;
+args.lbx(13:13:13*(N+1),1) = 0; args.ubx(13:13:13*(N+1),1) = 105; %thrust in N calculated from max pitch angle and weight
+
+args.lbx(13*(N+1)+1:4:13*(N+1)+4*N,1) = 0; args.ubx(13*(N+1)+1:4:13*(N+1)+4*N,1) = 105; %thrust in Newton calculated from max pitch angle and weight
+%args.lbx(14*(N+1)+2:5:14*(N+1)+4*N,1) = -pi/4; args.ubx(14*(N+1)+2:5:14*(N+1)+4*N,1) = pi/4; %servo angle speed in degree/s
+args.lbx(13*(N+1)+2:4:13*(N+1)+4*N,1) = -pi/4; args.ubx(13*(N+1)+2:4:13*(N+1)+4*N,1) = pi/4; %rpy_MPC in degree
+args.lbx(13*(N+1)+3:4:13*(N+1)+4*N,1) = -pi/4; args.ubx(13*(N+1)+3:4:13*(N+1)+4*N,1) = pi/4;
+args.lbx(13*(N+1)+4:4:13*(N+1)+4*N,1) = -pi/2; args.ubx(13*(N+1)+4:4:13*(N+1)+4*N,1) = pi/2;
 
 %----------------------------------------------
 % ALL OF THE ABOVE IS JUST A PROBLEM SET UP
@@ -144,19 +147,21 @@ args.lbx(14*(N+1)+5:5:14*(N+1)+5*N,1) = -pi/2; args.ubx(14*(N+1)+5:5:14*(N+1)+5*
 % THE SIMULATION LOOP SHOULD START FROM HERE
 %-------------------------------------------
 t0 = 0;
-x0 = zeros(14, 1); x0(1) = 20; x0(2) = 0; x0(3) = 0;% initial state
+x0 = zeros(13, 1); x0(1) = 20; %x(10) = pi/2; 
+x(13) = 15; % initial state
 
-xs = zeros(14, 1); xs(1) = 35; xs(2) = 0; xs(3) = 0; % goal state
+xs = zeros(13, 1); xs(1) = 26.9134;% x(10) = pi/2; 
+x(13) = 30;% goal state
 
 xx(:,1) = x0; % xx contains the history of states
 t(1) = t0;
 
-u_trim = [7.4270*9.81; 0.0; 0.0; 0.0;0.0];
+u_trim = [7.4270*9.81; 0.0; 0.0;0.0];
 
 u0 = repmat(u_trim,1,N)'; % control inputs for each robot
 X0 = repmat(x0,1,N+1)'; % initialization of the states decision variables
 
-sim_tim = 15; % Maximum simulation time
+sim_tim = 5; % Maximum simulation time
 
 % Start MPC
 mpciter = 0;
@@ -167,7 +172,7 @@ u_cl=[];
 % than 10^-6 and the number of mpc steps is less than its maximum
 % value.
 tic
-while(norm((x0(1:3)-xs(1:3)),2) > 5e-2 && mpciter < sim_tim / dt)
+while(norm(x0-xs,2) > 5e-2 && mpciter < sim_tim / dt)
 %while(mpciter < sim_tim / dt)
     %current_time = mpciter * dt;
     args.p   = [x0;xs]; % set the values of the parameters vector
@@ -189,6 +194,7 @@ while(norm((x0(1:3)-xs(1:3)),2) > 5e-2 && mpciter < sim_tim / dt)
         'lbg', args.lbg, 'ubg', args.ubg,'p',args.p);
 
     solver.stats().return_status
+
     u = reshape(full(sol.x(n_states*(N+1)+1:end))',n_controls,N)'; % get controls only from the solution
     xx1(:,1:n_states,mpciter+1)= reshape(full(sol.x(1:n_states*(N+1)))',n_states,N+1)'; % get solution TRAJECTORY
     u_cl= [u_cl ; u(1,:)];
@@ -200,8 +206,8 @@ while(norm((x0(1:3)-xs(1:3)),2) > 5e-2 && mpciter < sim_tim / dt)
     % Shift trajectory to initialize the next step
    
     X0 = [X0(2:end,:);X0(end,:)];
-    mpciter
-    ss_error = norm((x0(3)-xs(3)),2);
+    mpciter;
+    ss_error = norm((x0-xs),2)
     mpciter = mpciter + 1;
 end
 toc
