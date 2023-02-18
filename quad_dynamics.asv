@@ -35,8 +35,9 @@ function Xdot = quad_dynamics(X, U)
     %%%% constant for state update
     Mass = 7.4270;
     g = 9.81;
-
-    
+    J = [0.1673   -0.0000         0
+        -0.0000    0.1673         0
+            0         0    0.2879];
     I_inv = diag([10.685,5.7465,4.6678]);
 
 %%%%%%%%%%%%%%%      state update
@@ -46,19 +47,22 @@ function Xdot = quad_dynamics(X, U)
 
     % x(1:3) update equation
     F_aero = CalcAeroForce(V);
-    
     tilt_angle = 0;
-    accel = CalcAccel(F_aero,Thrust,rpy_MPC,tilt_angle);
+
+    accel = CalcAccel(F_aero,Thrust,rpy,tilt_angle);
     accel = accel + g;
 
     % x(7:9) update equation
     torque = CalcTorque(Thrust,tilt_angle);
 
-    Xdot = SX.sym('Xdot', 9);
+    Xdot = SX.sym('Xdot', 13);
     Xdot(1:3) = accel;
     Xdot(4:6) = [roll_dot;pitch_dot;yaw_dot];
     Xdot(7:9) = I_inv*(torque);
     %Xdot(10) = Tilt_speed;
+    Xdot(10:12) = [roll_dot;pitch_dot;yaw_dot];
+    Xdot(13) = Thrust;
+
 end
 
 
@@ -106,29 +110,20 @@ end
 
 function force = CalcAeroForce(V)
 
-WingSurfaceArea = 0.44;
-AirDensity = 1.229; 
 
-R_BW = BodyToWind(V);
-
-Va_i = R_BW*V;
-air_speed_norm = norm(Va_i);
-q_bar = (Va_i' * Va_i) * AirDensity / 2;
 
 blending_air_speed = 22.194;
 Transition_air_speed = 27.7425;
 
-alpha = atan(V(3)/V(1)); %angle attack
 C_Z0 = 0.35;
 C_Za = 0.11;
 C_D0 = 0.01;
 C_Da = 0.2;
 c_z = C_Z0 + C_Za * alpha;
 c_x = C_D0 + C_Da * alpha * alpha;
-c_y = 0;
-drag_cal = q_bar *WingSurfaceArea * c_x;
-lateral_cal = q_bar * WingSurfaceArea * c_y;
-lift_cal = q_bar * WingSurfaceArea * c_z;
+drag_cal = q_bar * obj.WingSurfaceArea * c_x;
+lateral_cal = q_bar * obj.WingSurfaceArea * c_y;
+lift_cal = q_bar * obj.WingSurfaceArea * c_z;
 
 
 if air_speed_norm < blending_air_speed
@@ -146,7 +141,7 @@ elseif air_speed_norm >= Transition_air_speed
     lift = lift_cal;
 end
 
-force = [-drag;lateral;-lift];
+
 
 end
 
