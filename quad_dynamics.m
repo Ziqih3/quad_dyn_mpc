@@ -19,17 +19,12 @@ function Xdot = quad_dynamics(X, U)
     yaw_dot = X(9);
 
     %tilt_angle = X(10);
-
-    roll_dot_last = X(10);
-    pitch_dot_last = X(11);
-    yaw_dot_last = X(12);
-
-    thrust_last= X(13);
     
     Thrust = U(1);
     %Tilt_speed = U(2);
     rpy_MPC = U(2:4);
     
+
     R_i2b = GetRotationMatrix(roll, pitch, yaw);
     R_b2i = R_i2b';
     
@@ -49,11 +44,11 @@ function Xdot = quad_dynamics(X, U)
     V = [vx;vy;vz];
     rpy = [roll; pitch; yaw];
     rpy_dot = [roll_dot; pitch_dot; yaw_dot];
-    last_rpy_dot = [roll_dot_last; pitch_dot_last; yaw_dot_last];
 
     % x(1:3) update equation
     F_aero = CalcAeroForce(V);
     tilt_angle = 0;
+
     accel = CalcAccel(F_aero,Thrust,rpy,tilt_angle);
     accel = accel + g;
 
@@ -68,8 +63,8 @@ function Xdot = quad_dynamics(X, U)
     Xdot(4:6) = [roll_dot;pitch_dot;yaw_dot];
     Xdot(7:9) = I_inv*(torque);
     %Xdot(10) = Tilt_speed;
-    Xdot(10:12) = [roll_dot_last;pitch_dot_last;yaw_dot_last];
-    Xdot(13) = thrust_last;
+    Xdot(10:12) = [roll_dot;pitch_dot;yaw_dot];
+    Xdot(13) = Thrust;
 
 end
 
@@ -87,7 +82,6 @@ function Rot_BI = GetRotationMatrix(roll, pitch, yaw)
     Rot_BI = [ c_th * c_ps                      ,       c_th * s_ps                      ,          -s_th;
                s_ph * s_th * c_ps - c_ph * s_ps ,       s_ph * s_th * s_ps + c_ph * c_ps ,          s_ph * c_th;
                c_ph * s_th * c_ps + s_ph * s_ps ,       c_ph * s_th * s_ps - s_ph * c_ps ,          c_ph * c_th  ];
-
 end
 
 function accel = CalcAccel(F_a,T,rpy,tilt)
@@ -97,7 +91,7 @@ function accel = CalcAccel(F_a,T,rpy,tilt)
         RBR = [sin(tilt);
                    0;
               -cos(tilt)];
-          
+  
         T_Body = RBR .* T;
 
         F_tot = F_a + T_Body;
@@ -106,7 +100,6 @@ function accel = CalcAccel(F_a,T,rpy,tilt)
         cang = cos(angles);
         sang = sin(angles);
 
-        
         RNI = [cang(2).*cang(1)                            , cang(2).*sang(1)                            , -sang(2);
                sang(3).*sang(2).*cang(1) - cang(3).*sang(1), sang(3).*sang(2).*sang(1) + cang(3).*cang(1), sang(3).*cang(2);
                cang(3).*sang(2).*cang(1) + sang(3).*sang(1), cang(3).*sang(2).*sang(1) - sang(3).*cang(1), cang(3).*cang(2)];
@@ -119,32 +112,66 @@ end
 
 
 function force = CalcAeroForce(V)
-%         V = V';
-%         a = atand(V(3)/V(1)) + obj.aoi;
-aoi = deg2rad(10);
+
 WingSurfaceArea = 0.44;
-a = (i/2*log((i+V(3)/V(1)/(i-V(3)/V(1)))) + aoi);
+AirDensity = 1.229;         
+R_BW = BodyToWind(V);
 
-b = 0;
-%         R_BW = [cosd(a) * cosd(b),    sind(b),     sind(a)*cosd(b);
-%                     -sind(b) * cosd(a),   cosd(b),     -sind(a)*sind(b);
-%                     -sind(a)         ,   0  ,        cosd(a)];
-R_BW = [cos(a) * cos(b),    sin(b),     sin(a)*cos(b);
-    -sin(b) * cos(a),   cos(b),     -sin(a)*sin(b);
-    -sin(a)         ,   0  ,        cos(a)];
+V_Air = R_BW*V;
 
-R_WB = R_BW.';
-%       disp((V' * V))
-AirDensity = 1.229;          % in kg/m^3
-q_bar = (V' * V) * AirDensity / 2;
+q_bar = (V_Air' * V_Air) * AirDensity / 2;
+
 c_y = 0;
 c_z = 0.35 + 0.11 * a;
 c_d = 0.01 + 0.2 * a * a;
 drag = q_bar * WingSurfaceArea * c_d;
 lateral = q_bar * WingSurfaceArea * c_y;
 lift = q_bar * WingSurfaceArea * c_z;
-%       disp(size(q_bar))
+
+R_WB = R_BW';              % Wind to body
 force = R_WB * [-drag; lateral;-lift];
 end
 
+function Torque = CalcAerodynamicTorque(V) %TODO
+a = atan(V(3)/V(1)); %angle attack
 
+R_BW = BodyToWind(V);
+V_Air = R_BW*V;
+q_bar = (V_Air' * V_Air) * physics.AirDensity / 2;
+
+%dimensionless angular rate
+Wingspan = 2; % in meters
+MeanChord = 0.22; % in meters
+WingSurfaceArea = 0.44;
+
+%Torque = [L,M,N] body frame
+cl = get_cl(a);
+cm = get_cm(a);
+
+roll_torque = q_bar * WingSurfaceArea * Wingspan * cl;
+pitch_torque = q_bar * WingSurfaceArea * MeanChord * cm;
+yaw_torque = q_bar * WingSurfaceArea * Wingspan * 0;
+
+Torque = [roll_torque; pitch_torque; yaw_torque];
+end
+
+function R_BW = BodyToWind(V)
+
+a = atan(V(3)/V(1)); %angle attack
+b = asin(V(2) / norm(V));% angle silp
+
+R_BW = [cos(a) * cos(b),    sin(b),     sin(a)*cos(b);
+        -sin(b) * cos(a),   cos(b),     -sin(a)*sin(b);
+        -sin(a)         ,   0  ,        cos(a)];
+end
+
+function cl = get_cl(alpha)
+    data = load('C_l');
+    cl = fixpt_interp1([-8.5:.25:13.75, 14.5,14.75, 15],data.C_l,alpha,sfix(8),2^-3,sfix(16), 2^-14,'Nearest');
+end
+
+
+function cm = get_cm(alpha)
+data = load('C_m');
+cm = fixpt_interp1([-8.5:.25:13.75, 14.5,14.75, 15],data.C_m,alpha,sfix(8),2^-3,sfix(16), 2^-14,'Floor');
+end

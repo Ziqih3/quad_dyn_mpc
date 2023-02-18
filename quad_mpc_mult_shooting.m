@@ -147,11 +147,11 @@ args.lbx(13*(N+1)+4:4:13*(N+1)+4*N,1) = -pi/2; args.ubx(13*(N+1)+4:4:13*(N+1)+4*
 % THE SIMULATION LOOP SHOULD START FROM HERE
 %-------------------------------------------
 t0 = 0;
-x0 = zeros(13, 1); x0(1) = 10; %x(10) = pi/2; 
+x0 = zeros(13, 1); x0(3) = -5 ; %x(10) = pi/2; 
 x(13) = 15; % initial state
 
-xs = zeros(13, 1); xs(1) = 26.9134;% x(10) = pi/2; 
-x(13) = 30;% goal state
+xs = zeros(13, 1); xs(3) = 0;% x(10) = pi/2; 
+x(13) = 7.4270*9.81;% goal state
 
 xx(:,1) = x0; % xx contains the history of states
 
@@ -162,7 +162,7 @@ u_trim = [7.4270*9.81; 0.0; 0.0;0.0];
 u0 = repmat(u_trim,1,N)'; % control inputs for each robot
 X0 = repmat(x0,1,N+1)'; % initialization of the states decision variables
 
-sim_tim = 5; % Maximum simulation time
+sim_tim = 3; % Maximum simulation time
 
 % Start MPC
 mpciter = 0;
