@@ -70,26 +70,22 @@ X = SX.sym('X',n_states,(N+1));
 obj = 0; % Objective function
 g = [];  % constraints vector
 
-Q = eye(n_states,n_states); Q(1:3,1:3) = diag([100;100;100]); Q(4:6,4:6) = diag([20;20;0.1]); Q(7:9,7:9) = diag([5;5;0.01]);% weighing matrices (states)
+Q = eye(n_states,n_states); Q(1:3,1:3) = diag([1;1;10000]); Q(4:6,4:6) = diag([20;20;0.1]); Q(7:9,7:9) = diag([1;1;1000]);% weighing matrices (states)
 
-R = eye(n_controls,n_controls); R(1,1) = 0.1; R(2:4,2:4) = 0.05*eye(3); % weighing matrices (controls)
+R = eye(n_controls,n_controls); R(1,1) = 0.1; R(2:4,2:4) =diag([0.05;0.05;0.05]); % weighing matrices (controls)
 
 st  = X(:,1); % initial state
 g = [g;st-P(1:n_states)]; % initial condition constraints
 for k = 1:N
     st = X(:,k);  con = U(:,k);
     obj = obj+(st-P(n_states+1:2*n_states))'*Q*(st-P(n_states+1:2*n_states)) + con'*R*con; % calculate obj
-%     obj = obj + (st - P(nvar*k-3:nvar*k+8))'*Q*(st - P(nvar*k-3:nvar*k+8)) + ...
-%           (con - P(nvar*k+9:nvar*k+12))'*R*(con - P(nvar*k+9:nvar*k+12));
     st_next = X(:,k+1);
     k1 = f(st, con);   % new 
     k2 = f(st + dt/2*k1, con); % new
     k3 = f(st + dt/2*k2, con); % new
     k4 = f(st + dt*k3, con); % new
     st_next_RK4=st +dt/6*(k1 +2*k2 +2*k3 +k4); % new      
-%     f_value = f(st,con);
-%     st_next_euler = st+ (dt*f_value);
-%     g = [g;st_next-st_next_euler]; % compute constraints
+
     g = [g;st_next-st_next_RK4]; % compute constraints % new
 end
 % make the decision variable one column  vector
@@ -142,16 +138,15 @@ args.lbx(9*(N+1)+4:4:9*(N+1)+4*N,1) = -pi/2; args.ubx(9*(N+1)+4:4:9*(N+1)+4*N,1)
 % THE SIMULATION LOOP SHOULD START FROM HERE
 %-------------------------------------------
 t0 = 0;
-x0 = zeros(9, 1); x0(3) = 3; %x(10) = pi/2; 
-x(13) = 7.4270*9.81; % initial state
-
-xs = zeros(9, 1); xs(3) = 0;% x(10) = pi/2; 
-x(13) = 7.4270*9.81;% goal state
+x0 = zeros(9, 1); x0(3) = -2;    %x(10) = pi/2; 
+% initial state
+xs = zeros(9, 1); xs(3) = -8; % x(10) = pi/2; 
+% goal state
 
 xx(:,1) = x0; % xx contains the history of states
 
 t(1) = t0;
-
+%7.4270*9.81
 u_trim = [7.4270*9.81; 0.0; 0.0;0.0];
 
 u0 = repmat(u_trim,1,N)'; % control inputs for each robot
@@ -169,26 +164,10 @@ u_cl=[];
 % value.
 tic
 while(norm(x0-xs,2) > 5e-2 && mpciter < sim_tim / dt)
-%while(mpciter < sim_tim / dt)
-    %current_time = mpciter * dt;
-    args.p   = [x0;xs]; % set the values of the parameters vector
-    %----------------------------------------------------------------------
-%     args.p(1:n_states) = x0; % initial condition of the robot posture
-%     for k = 1:N %new - set the reference to track
-%         t_predict = current_time + (k-1)*dt; % predicted time instant
-%         z_ref = -0.15*t_predict-2.0; 
-%         if z_ref <= -3 % the trajectory end is reached
-%             z_ref = -3; 
-%         end
-%         args.p(nvar*k-3:nvar*k+8) = [0.0, 0.0, z_ref, 0.0, 0.0, 0.0, 0.0, 0.0, -0.15, 0.0, 0.0, 0.0];
-%         args.p(nvar*k+9:nvar*k+12) = u_trim;
-%     end
-    %---------------------------------------------------------------------- 
-    % initial value of the optimization variables
+    args.p   = [x0;xs]; 
     args.x0  = [reshape(X0',n_states*(N+1),1);reshape(u0',n_controls*N,1)];
     sol = solver('x0', args.x0, 'lbx', args.lbx, 'ubx', args.ubx,...
         'lbg', args.lbg, 'ubg', args.ubg,'p',args.p);
-
     solver.stats().return_status
 
     u = reshape(full(sol.x(n_states*(N+1)+1:end))',n_controls,N)'; % get controls only from the solution

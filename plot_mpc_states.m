@@ -14,17 +14,16 @@ for k = 1:9
     subplot(3, 3, k)
     plot(xx(k, :), 'r', 'LineWidth',3)
     hold on
-%     for i = start_time:plot_time
-%         t = i:i+horizon;
-%         z = xx1(:, k, i);
-%         plot(t, z)
-%         hold on
-%     end
+    for i = start_time:plot_time
+        t = i:i+horizon;
+        z = xx1(:, k, i);
+        plot(t, z)
+        hold on
+    end
     title(titles(k))
 end
 %subplot()
-u_cl = [u_cl(:,1),rad2deg(u_cl(:,2:end))];
-control_titles = ["Thrust","Roll(deg)", "Pitch(deg)", "Yaw(deg)"];
+control_titles = ["Thrust","Roll", "Pitch", "Yaw"];
 figure
 for i = 1:4
     subplot(2, 2, i)
