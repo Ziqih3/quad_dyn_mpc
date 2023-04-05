@@ -10,6 +10,9 @@ dt = 0.02; %[s]
 N = 50; % prediction horizon
 
 % bound = Boundary();
+% x = SX.sym('x');
+% y = SX.sym('y'); 
+% z = SX.sym('z');
 
 % Velocity
 V_x = SX.sym('V_x');
@@ -48,7 +51,7 @@ rpy_MPC = [Roll_MPC; Pitch_MPC; Yaw_MPC];
 % Thrust
 Thrust = SX.sym('Thrust');
 % Control input
-controls= [Thrust; rpy_MPC]; %tilt_speed; rpy_MPC];
+controls= [Thrust;rpy_MPC]; %tilt_speed; rpy_MPC];
 
 
 n_controls = length(controls);
@@ -70,12 +73,13 @@ X = SX.sym('X',n_states,(N+1));
 obj = 0; % Objective function
 g = [];  % constraints vector
 
-Q = eye(n_states,n_states); Q(1:3,1:3) = diag([1;1;10000]); Q(4:6,4:6) = diag([20;20;0.1]); Q(7:9,7:9) = diag([1;1;1000]);% weighing matrices (states)
+Q = eye(n_states,n_states); Q(1:3,1:3) = diag([5;0.1;5]); Q(4:6,4:6) = diag([20;20;0.01]); Q(7:9,7:9) = diag([20;20;0.01]);% weighing matrices (states)
 
-R = eye(n_controls,n_controls); R(1,1) = 0.1; R(2:4,2:4) =diag([0.05;0.05;0.05]); % weighing matrices (controls)
+R = eye(n_controls,n_controls); R(1,1) = 0.025; R(2:4,2:4) =diag([20;20;0]); % weighing matrices (controls)
 
 st  = X(:,1); % initial state
 g = [g;st-P(1:n_states)]; % initial condition constraints
+
 for k = 1:N
     st = X(:,k);  con = U(:,k);
     obj = obj+(st-P(n_states+1:2*n_states))'*Q*(st-P(n_states+1:2*n_states)) + con'*R*con; % calculate obj
@@ -88,6 +92,7 @@ for k = 1:N
 
     g = [g;st_next-st_next_RK4]; % compute constraints % new
 end
+
 % make the decision variable one column  vector
 OPT_variables = [reshape(X,n_states*(N+1),1);reshape(U,n_controls*N,1)];
 
@@ -128,7 +133,7 @@ args.lbx(9*(N+1)+1:4:9*(N+1)+4*N,1) = 0; args.ubx(9*(N+1)+1:4:9*(N+1)+4*N,1) = 1
 %args.lbx(14*(N+1)+2:5:14*(N+1)+4*N,1) = -pi/4; args.ubx(14*(N+1)+2:5:14*(N+1)+4*N,1) = pi/4; %servo angle speed in degree/s
 args.lbx(9*(N+1)+2:4:9*(N+1)+4*N,1) = -pi/4; args.ubx(9*(N+1)+2:4:9*(N+1)+4*N,1) = pi/4; %rpy_MPC in degree
 args.lbx(9*(N+1)+3:4:9*(N+1)+4*N,1) = -pi/4; args.ubx(9*(N+1)+3:4:9*(N+1)+4*N,1) = pi/4;
-args.lbx(9*(N+1)+4:4:9*(N+1)+4*N,1) = -pi/2; args.ubx(9*(N+1)+4:4:9*(N+1)+4*N,1) = pi/2;
+args.lbx(9*(N+1)+4:4:9*(N+1)+4*N,1) = -pi/4; args.ubx(9*(N+1)+4:4:9*(N+1)+4*N,1) = pi/4;
 
 %----------------------------------------------
 % ALL OF THE ABOVE IS JUST A PROBLEM SET UP
@@ -138,21 +143,21 @@ args.lbx(9*(N+1)+4:4:9*(N+1)+4*N,1) = -pi/2; args.ubx(9*(N+1)+4:4:9*(N+1)+4*N,1)
 % THE SIMULATION LOOP SHOULD START FROM HERE
 %-------------------------------------------
 t0 = 0;
-x0 = zeros(9, 1); x0(3) = -2;    %x(10) = pi/2; 
+x0 = zeros(9, 1); x0(1) = 25; x0(3) = 0;    %x(10) = pi/2; 
 % initial state
-xs = zeros(9, 1); xs(3) = -8; % x(10) = pi/2; 
+xs = zeros(9, 1); xs(3) = 0; xs(1) = 27; % x(10) = pi/2; 
 % goal state
 
 xx(:,1) = x0; % xx contains the history of states
 
 t(1) = t0;
 %7.4270*9.81
-u_trim = [7.4270*9.81; 0.0; 0.0;0.0];
+u_trim = [7.4270*9.8; 0.0; 0.1;0.0];
 
 u0 = repmat(u_trim,1,N)'; % control inputs for each robot
 X0 = repmat(x0,1,N+1)'; % initialization of the states decision variables
 
-sim_tim = 3; % Maximum simulation time
+sim_tim = 5; % Maximum simulation time
 
 % Start MPC
 mpciter = 0;
@@ -163,27 +168,31 @@ u_cl=[];
 % than 10^-6 and the number of mpc steps is less than its maximum
 % value.
 tic
-while(norm(x0-xs,2) > 5e-2 && mpciter < sim_tim / dt)
+while(norm(x0-xs,2) > 0.02 && mpciter < sim_tim / dt)
+        
     args.p   = [x0;xs]; 
     args.x0  = [reshape(X0',n_states*(N+1),1);reshape(u0',n_controls*N,1)];
     sol = solver('x0', args.x0, 'lbx', args.lbx, 'ubx', args.ubx,...
         'lbg', args.lbg, 'ubg', args.ubg,'p',args.p);
-    solver.stats().return_status
+    solver.stats().return_status;
 
     u = reshape(full(sol.x(n_states*(N+1)+1:end))',n_controls,N)'; % get controls only from the solution
     xx1(:,1:n_states,mpciter+1)= reshape(full(sol.x(1:n_states*(N+1)))',n_states,N+1)'; % get solution TRAJECTORY
     u_cl= [u_cl ; u(1,:)];
+
     t(mpciter+1) = t0;
     % Apply the control and shift the solution
     [t0, x0, u0] = shift(dt, t0, x0, u,f);
     xx(:,mpciter+2) = x0;
+    
     X0 = reshape(full(sol.x(1:n_states*(N+1)))',n_states,N+1)'; % get solution TRAJECTORY
     % Shift trajectory to initialize the next step
     X0 = [X0(2:end,:);X0(end,:)];
     mpciter;
-    ss_error = norm((x0-xs),2)
+    ss_error = norm((x0-xs),2);
     mpciter = mpciter + 1;
 end
+
 toc
 
 

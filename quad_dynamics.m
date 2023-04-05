@@ -22,7 +22,7 @@ function Xdot = quad_dynamics(X, U)
     
     Thrust = U(1);
     %Tilt_speed = U(2);
-    torque = U(2:4);
+    rpy_MPC = U(2:4);
     %%%% constant for state update
     Mass = 7.4270;
     g = 9.81;
@@ -37,7 +37,7 @@ function Xdot = quad_dynamics(X, U)
     F_aero = CalcAeroForce(V);
     tilt_angle = 0;
     accel = CalcAccel(F_aero,Thrust,rpy,tilt_angle) + [0;0;g];
-
+    torque = CalcTorque(rpy_MPC,rpy,rpy_dot);
     % x(7:9) update equation
 
     Xdot = SX.sym('Xdot', 9);
@@ -52,7 +52,6 @@ end
 
 
 function accel = CalcAccel(F_a,T,rpy,tilt)
-        
         Mass = 7.4270;
         RBR = [sin(tilt);
                    0;
@@ -63,7 +62,6 @@ function accel = CalcAccel(F_a,T,rpy,tilt)
         R_b2i = R_i2b'; 
         F_Inertial = R_b2i * F_tot;
         accel = F_Inertial / Mass;
-        
 end
 
 
@@ -73,69 +71,58 @@ WingSurfaceArea = 0.44;
 AirDensity = 1.229; 
 
 R_BW = BodyToWind(V);
-
 Va_i = R_BW*V;
+
 air_speed_norm = norm(Va_i);
 q_bar = (Va_i' * Va_i) * AirDensity / 2;
 
 blending_air_speed = 22.194;
-Transition_air_speed = 27.7425;
+Transition_air_speed = 27.7425;  
 
-alpha = atan(V(3)/V(1)); %angle attack
+alpha = atan(V(3)/V(1))*180/pi; %angle attack
 C_Z0 = 0.35;
 C_Za = 0.11;
 C_D0 = 0.01;
 C_Da = 0.2;
+
 c_z = C_Z0 + C_Za * alpha;
 c_x = C_D0 + C_Da * alpha * alpha;
 c_y = 0;
+
 drag_cal = q_bar *WingSurfaceArea * c_x;
 lateral_cal = q_bar * WingSurfaceArea * c_y;
 lift_cal = q_bar * WingSurfaceArea * c_z;
 
-% if air_speed_norm < blending_air_speed
-%     drag = 0;
-%     lateral = 0;
-%     lift = 0;
-% elseif air_speed_norm >= blending_air_speed && air_speed_norm < Transition_air_speed
-%     ratio = (air_speed_norm - blending_air_speed) / (Transition_air_speed - blending_air_speed);
-%     drag = drag_cal * ratio;
-%     lateral = lateral_cal  * ratio;
-%     lift = lift_cal * ratio;
-% elseif air_speed_norm >= Transition_air_speed
-%     drag = drag_cal;
-%     lateral = lateral_cal;
-%     lift = lift_cal;
-% end
-
-force = [0;0;0];
+force = R_BW'*[-drag_cal;lateral_cal;-lift_cal];
+%force = [0;0;0];
 
 end
 
-% function Torque = CalcTorque(rpy_MPC,rpy,rpy_dot) %assuming same thrust and tilt for 4 rotor
-% %ThrustConstant = 1.08105e-4 / 5;    
-% %TorqueConstant = (1.08105e-4 / 5) * 0.05;
-% % r1 = [0.4;0.4;0];
-% % r2 = [0.4;-0.4;0];
-% % r3 = [-0.4;0.4;0];
-% % r4 = [-0.4;-0.4;0];
-% % T_body = thrust/4*[sin(tilt_angle);0;cos(tilt_angle)];
-% % Torque = cross(r1,T_body)+cross(r2,T_body)+cross(r3,T_body)+cross(r4,T_body);
-% rpy_sp = rpy_MPC;
-% body_rate_sp = diag([5,5,10])* (rpy_sp - rpy);
-% Torque = diag([5,5,10]) * (body_rate_sp - rpy_dot);
-% 
-% end
+function Torque = CalcTorque(rpy_MPC,rpy,rpy_dot) %assuming same thrust and tilt for 4 rotor
+%ThrustConstant = 1.08105e-4 / 5;    
+%TorqueConstant = (1.08105e-4 / 5) * 0.05;
+% r1 = [0.4;0.4;0];
+% r2 = [0.4;-0.4;0];
+% r3 = [-0.4;0.4;0];
+% r4 = [-0.4;-0.4;0];
+% T_body = thrust/4*[sin(tilt_angle);0;cos(tilt_angle)];
+% Torque = cross(r1,T_body)+cross(r2,T_body)+cross(r3,T_body)+cross(r4,T_body);
+rpy_sp = rpy_MPC ;
+body_rate_sp = diag([2,2,0])* (rpy_sp - rpy);
+Torque = diag([2,2,0]) * (body_rate_sp - rpy_dot);
+
+end
 
 function R_BW = BodyToWind(V)
 
 a = atan(V(3)/V(1)); %angle attack
-b = asin(V(2) / norm(V));% angle silp
+b = 0;% angle silp
 
 R_BW = [cos(a) * cos(b),    sin(b),     sin(a)*cos(b);
         -sin(b) * cos(a),   cos(b),     -sin(a)*sin(b);
         -sin(a)         ,   0  ,        cos(a)];
 end
+
 
 function R_RB = RotorToBody(tilt_angle)
 R_RB = [cos(tilt_angle), 0, -sin(tilt_angle);
