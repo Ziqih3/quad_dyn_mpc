@@ -3,7 +3,6 @@ clear all
 close all
 clc
 
-addpath('Users/rapstar/Desktop/quad_dyn_mpc/casadi-matlabR2014a-v3.5.5')
 import casadi.*
 
 dt = 0.02; %[s]
@@ -37,10 +36,9 @@ Roll_dot_last = SX.sym('Roll_dot_last');
 Pitch_dot_last = SX.sym('Pitch_dot_last');
 Yaw_dot_last = SX.sym('Yaw_dot_last');
 last_rpy_dot = [Roll_dot_last; Pitch_dot_last; Yaw_dot_last];
-last_thrust = SX.sym('last_thrust');
 
-% 14x1
-states = [V; rpy; rpy_dot; tilt_angle; last_rpy_dot; last_thrust];
+% 13x1
+states = [V; rpy; rpy_dot; tilt_angle; last_rpy_dot];
 n_states = length(states);
 
 Roll_MPC = SX.sym('Roll_MPC');
@@ -74,25 +72,34 @@ X = SX.sym('X',n_states,(N+1));
 obj = 0; % Objective function
 g = [];  % constraints vector
 
-Q = eye(n_states,n_states); Q(1:3,1:3) = diag([1;1;10000]); Q(4:6,4:6) = 0.1*eye(3); Q(7:9,7:9) = diag([1;1;1000]);% weighing matrices (states)
-R = eye(n_controls,n_controls); R(1,1) = 0.01; R(2:4,2:4) = 0.05*eye(3); % weighing matrices (controls)
+Q_v = diag([20 10 50]);
+Q_rpy = diag([10 20 10]);
+Q_rpy_dot = diag([10 10 10]);
+Q_u = diag([0.0025 1 10 10 10]);
+q_ref = [5, 0.1, 0.1]';
 
 st  = X(:,1); % initial state
 g = [g;st-P(1:n_states)]; % initial condition constraints
+objective_function = 0;
+
 for k = 1:N
     st = X(:,k);  con = U(:,k);
-    obj = obj+(st-P(n_states+1:2*n_states))'*Q*(st-P(n_states+1:2*n_states)) + con'*R*con; % calculate obj
-%     obj = obj + (st - P(nvar*k-3:nvar*k+8))'*Q*(st - P(nvar*k-3:nvar*k+8)) + ...
-%           (con - P(nvar*k+9:nvar*k+12))'*R*(con - P(nvar*k+9:nvar*k+12));
+    R_I2B = GetRotationMatrix(st(4),st(5),st(6));
+    Velocity_body = R_I2B*st(1:3);
+
+    obj_stateinput = (st(1:3)-P(14:16))' * Q_v * (st(1:3)-P(14:16))...
+        +(st(4:6))' * Q_rpy * (st(4:6))...
+        +(st(7:9))' * Q_rpy_dot * (st(7:9))...
+        + con' * Q_u * con ;
+    obj_soft_tilt = exp(-0.332*Velocity_body(1)*(st(10)*180/pi)+1.8*(st(10)*180/pi)+(-0.477)*Velocity_body(1)-2.303);
+    objective_function = objective_function +  obj_stateinput + obj_soft_tilt;
+   
     st_next = X(:,k+1);
-    k1 = f(st, con);   % new 
+    k1 = f(st, con);   % new
     k2 = f(st + dt/2*k1, con); % new
     k3 = f(st + dt/2*k2, con); % new
     k4 = f(st + dt*k3, con); % new
     st_next_RK4=st +dt/6*(k1 +2*k2 +2*k3 +k4); % new      
-%     f_value = f(st,con);
-%     st_next_euler = st+ (dt*f_value);
-%     g = [g;st_next-st_next_euler]; % compute constraints
     g = [g;st_next-st_next_RK4]; % compute constraints % new
 end
 % make the decision variable one column  vector
@@ -116,26 +123,25 @@ args.lbg(1:n_states*(N+1)) = -1e-20;
 args.ubg(1:n_states*(N+1)) = 1e-20;
 
 % input and states constraints
-args.lbx(1:14:14*(N+1),1) = -40; args.ubx(1:14:14*(N+1),1) = 40; %V in m/s
-args.lbx(2:14:14*(N+1),1) = -40; args.ubx(2:14:14*(N+1),1) = 40;
-args.lbx(3:14:14*(N+1),1) = -10; args.ubx(3:14:14*(N+1),1) = 10;
-args.lbx(4:14:14*(N+1),1) = -pi/4; args.ubx(4:14:14*(N+1),1) = pi/4; %rpy in radian
-args.lbx(5:14:14*(N+1),1) = -pi/4; args.ubx(5:14:14*(N+1),1) = pi/4;
-args.lbx(6:14:14*(N+1),1) = -inf; args.ubx(6:14:14*(N+1),1) = inf;
-args.lbx(7:14:14*(N+1),1) = -pi; args.ubx(7:14:14*(N+1),1) = pi; %rpy_dot in radian
-args.lbx(8:14:14*(N+1),1) = -pi; args.ubx(6:14:14*(N+1),1) = pi;
-args.lbx(9:14:14*(N+1),1) = -pi; args.ubx(9:14:14*(N+1),1) = pi;
-args.lbx(10:14:14*(N+1),1) = deg2rad(-7); args.ubx(10:14:14*(N+1),1) = pi/2; %servo angle in degree
-args.lbx(11:14:14*(N+1),1) = -pi; args.ubx(11:14:14*(N+1),1) = pi; %rpy_dot last set points in degree
-args.lbx(12:14:14*(N+1),1) = -pi; args.ubx(12:14:14*(N+1),1) = pi;
-args.lbx(13:14:14*(N+1),1) = -pi; args.ubx(13:14:14*(N+1),1) = pi;
-args.lbx(14:14:14*(N+1),1) = 0; args.ubx(14:14:14*(N+1),1) = 105; %thrust in N calculated from max pitch angle and weight
-args.lbx(14*(N+1)+1:5:14*(N+1)+5*N,1) = 0; args.ubx(14*(N+1)+1:5:14*(N+1)+5*N,1) = 105; %thrust in Newton calculated from max pitch angle and weight
-args.lbx(14*(N+1)+2:5:14*(N+1)+5*N,1) = -pi/4; args.ubx(14*(N+1)+2:5:14*(N+1)+5*N,1) = pi/4; %servo angle speed in degree/s
-args.lbx(14*(N+1)+3:5:14*(N+1)+5*N,1) = -pi/4; args.ubx(14*(N+1)+3:5:14*(N+1)+5*N,1) = pi/4; %rpy_MPC in degree
-args.lbx(14*(N+1)+4:5:14*(N+1)+5*N,1) = -pi/4; args.ubx(14*(N+1)+4:5:14*(N+1)+5*N,1) = pi/4;
-args.lbx(14*(N+1)+5:5:14*(N+1)+5*N,1) = -pi/2; args.ubx(14*(N+1)+5:5:14*(N+1)+5*N,1) = pi/2;
+args.lbx(1:n_states:n_states*(N+1),1) = -30; args.ubx(1:n_states:n_states*(N+1),1) = 30; %V in m/s
+args.lbx(2:n_states:n_states*(N+1),1) = -30; args.ubx(2:n_states:n_states*(N+1),1) = 30;
+args.lbx(3:n_states:n_states*(N+1),1) = -10; args.ubx(3:n_states:n_states*(N+1),1) = 10;
+args.lbx(4:n_states:n_states*(N+1),1) = -pi/4; args.ubx(4:n_states:n_states*(N+1),1) = pi/4; %rpy in radian
+args.lbx(5:n_states:n_states*(N+1),1) = -pi/4;   args.ubx(5:n_states:n_states*(N+1),1) = pi/6;
+args.lbx(6:n_states:n_states*(N+1),1) = -inf; args.ubx(6:n_states:n_states*(N+1),1) = inf;
+args.lbx(7:n_states:n_states*(N+1),1) = -pi; args.ubx(7:n_states:n_states*(N+1),1) = pi; %rpy_dot in radian
+args.lbx(8:n_states:n_states*(N+1),1) = -pi; args.ubx(8:n_states:n_states*(N+1),1) = pi;
+args.lbx(9:n_states:n_states*(N+1),1) = -pi; args.ubx(9:n_states:n_states*(N+1),1) = pi;
+args.lbx(10:n_states:n_states*(N+1),1) = -0.122; args.ubx(10:n_states:n_states*(N+1),1) = pi/2; % tilt in degree
+args.lbx(11:n_states:n_states*(N+1),1) = -pi; args.ubx(11:n_states:n_states*(N+1),1) = pi;
+args.lbx(12:n_states:n_states*(N+1),1) = -pi; args.ubx(12:n_states:n_states*(N+1),1) = pi;
+args.lbx(13:n_states:n_states*(N+1),1) = -pi; args.ubx(13:n_states:n_states*(N+1),1) = pi;
 
+args.lbx(n_states*(N+1)+1:n_controls:n_states*(N+1)+n_controls*N,1) = 0; args.ubx(n_states*(N+1)+1:n_controls:n_states*(N+1)+n_controls*N,1) = 90; %thrust in Newton calculated from max pitch angle and weight
+args.lbx(n_states*(N+1)+2:n_controls:n_states*(N+1)+n_controls*N,1) = -inf; args.ubx(n_states*(N+1)+2:n_controls:n_states*(N+1)+n_controls*N,1) = inf;
+args.lbx(n_states*(N+1)+3:n_controls:n_states*(N+1)+n_controls*N,1) = -pi/4; args.ubx(n_states*(N+1)+3:n_controls:n_states*(N+1)+n_controls*N,1) = pi/4; %rpy_MPC
+args.lbx(n_states*(N+1)+4:n_controls:n_states*(N+1)+n_controls*N,1) = -pi/4; args.ubx(n_states*(N+1)+4:n_controls:n_states*(N+1)+n_controls*N,1) = pi/6;
+args.lbx(n_states*(N+1)+5:n_controls:n_states*(N+1)+n_controls*N,1) = -pi/4; args.ubx(n_states*(N+1)+5:n_controls:n_states*(N+1)+n_controls*N,1) = pi/4;
 %----------------------------------------------
 % ALL OF THE ABOVE IS JUST A PROBLEM SET UP
 
@@ -144,9 +150,9 @@ args.lbx(14*(N+1)+5:5:14*(N+1)+5*N,1) = -pi/2; args.ubx(14*(N+1)+5:5:14*(N+1)+5*
 % THE SIMULATION LOOP SHOULD START FROM HERE
 %-------------------------------------------
 t0 = 0;
-x0 = zeros(14, 1); x0(1) = 20; x0(2) = 0; x0(3) = 0;% initial state
+x0 = zeros(13, 1); x0(1) = 0; x0(2) = 0; x0(3) = 0;% initial state
 
-xs = zeros(14, 1); xs(1) = 35; xs(2) = 0; xs(3) = 0; % goal state
+xs = zeros(13, 1); xs(1) = 0; xs(2) = 0; xs(3) = -5; % goal state
 
 xx(:,1) = x0; % xx contains the history of states
 t(1) = t0;
@@ -201,7 +207,7 @@ while(norm((x0(1:3)-xs(1:3)),2) > 5e-2 && mpciter < sim_tim / dt)
    
     X0 = [X0(2:end,:);X0(end,:)];
     mpciter
-    ss_error = norm((x0(3)-xs(3)),2);
+    ss_error = norm((x0(3)-xs(3)),2)
     mpciter = mpciter + 1;
 end
 toc
@@ -210,3 +216,19 @@ toc
 %Draw_MPC_point_stabilization_v1 (t,xx,xx1,u_cl,xs,N,rob_diam)
 plot_mpc_states
 
+%%
+%R_i2b
+function Rot_BI = GetRotationMatrix(roll, pitch, yaw)
+
+    s_ph = sin(roll);
+    s_th = sin(pitch);
+    s_ps = sin(yaw);
+    c_ph = cos(roll);
+    c_th = cos(pitch);
+    c_ps = cos(yaw);
+
+    Rot_BI = [ c_th * c_ps                      ,       c_th * s_ps                      ,          -s_th;
+               s_ph * s_th * c_ps - c_ph * s_ps ,       s_ph * s_th * s_ps + c_ph * c_ps ,          s_ph * c_th;
+               c_ph * s_th * c_ps + s_ph * s_ps ,       c_ph * s_th * s_ps - s_ph * c_ps ,          c_ph * c_th  ];
+
+end
