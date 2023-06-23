@@ -6,7 +6,7 @@ clc
 import casadi.*
 
 dt = 0.02; %[s]
-N = 5; % prediction horizon
+N = 10; % prediction horizon
 
 % bound = Boundary();
 
@@ -53,23 +53,19 @@ Thrust = SX.sym('Thrust');
 % Control input
 controls= [Thrust; tilt_speed; rpy_MPC];
 
-
 n_controls = length(controls);
-
-nvar = n_states + n_controls;
 
 rhs = quad_dynamics(states, controls); % system r.h.s
 
 f = Function('f',{states,controls},{rhs}); % nonlinear mapping function f(x,u)
 U = SX.sym('U',n_controls,N); % Decision variables (controls)
 %P = SX.sym('P',n_states + N*(n_states+n_controls));
-P = SX.sym('P',n_states + n_states);
+P = SX.sym('P',n_states + N*n_states);
 % parameters (which include the initial state and the reference state)
 
 X = SX.sym('X',n_states,(N+1));
 % A vector that represents the states over the optimization problem.
 
-obj = 0; % Objective function
 g = [];  % constraints vector
 
 Q_v = diag([20 10 50]);
@@ -87,13 +83,13 @@ for k = 1:N
     R_I2B = GetRotationMatrix(st(4),st(5),st(6));
     Velocity_body = R_I2B*st(1:3);
 
-    obj_stateinput = (st(1:3)-P(14:16))' * Q_v * (st(1:3)-P(14:16))...
-        +(st(4:6))' * Q_rpy * (st(4:6))...
+    obj_stateinput = (st(1:3)-P(n_states*k+1:n_states*k+3))' * Q_v * (st(1:3)-P(n_states*k+1:n_states*k+3)) +...
+        (st(4:6))' * Q_rpy * (st(4:6))...
         +(st(7:9))' * Q_rpy_dot * (st(7:9))...
         + con' * Q_u * con ;
     obj_soft_tilt = exp(-0.332*Velocity_body(1)*(st(10)*180/pi)+1.8*(st(10)*180/pi)+(-0.477)*Velocity_body(1)-2.303);
     objective_function = objective_function +  obj_stateinput + obj_soft_tilt;
-   
+
     st_next = X(:,k+1);
     k1 = f(st, con);   % new
     k2 = f(st + dt/2*k1, con); % new
@@ -105,7 +101,8 @@ end
 % make the decision variable one column  vector
 OPT_variables = [reshape(X,n_states*(N+1),1);reshape(U,n_controls*N,1)];
 
-nlp_prob = struct('f', obj, 'x', OPT_variables, 'g', g, 'p', P);
+nlp_prob = struct('f', objective_function ...
+    , 'x', OPT_variables, 'g', g, 'p', P);
 
 opts = struct;
 opts.ipopt.max_iter = 60000;
@@ -137,7 +134,7 @@ args.lbx(11:n_states:n_states*(N+1),1) = -pi; args.ubx(11:n_states:n_states*(N+1
 args.lbx(12:n_states:n_states*(N+1),1) = -pi; args.ubx(12:n_states:n_states*(N+1),1) = pi;
 args.lbx(13:n_states:n_states*(N+1),1) = -pi; args.ubx(13:n_states:n_states*(N+1),1) = pi;
 
-args.lbx(n_states*(N+1)+1:n_controls:n_states*(N+1)+n_controls*N,1) = 0; args.ubx(n_states*(N+1)+1:n_controls:n_states*(N+1)+n_controls*N,1) = 90; %thrust in Newton calculated from max pitch angle and weight
+args.lbx(n_states*(N+1)+1:n_controls:n_states*(N+1)+n_controls*N,1) = 0; args.ubx(n_states*(N+1)+1:n_controls:n_states*(N+1)+n_controls*N,1) = 105; %thrust in Newton calculated from max pitch angle and weight
 args.lbx(n_states*(N+1)+2:n_controls:n_states*(N+1)+n_controls*N,1) = -inf; args.ubx(n_states*(N+1)+2:n_controls:n_states*(N+1)+n_controls*N,1) = inf;
 args.lbx(n_states*(N+1)+3:n_controls:n_states*(N+1)+n_controls*N,1) = -pi/4; args.ubx(n_states*(N+1)+3:n_controls:n_states*(N+1)+n_controls*N,1) = pi/4; %rpy_MPC
 args.lbx(n_states*(N+1)+4:n_controls:n_states*(N+1)+n_controls*N,1) = -pi/4; args.ubx(n_states*(N+1)+4:n_controls:n_states*(N+1)+n_controls*N,1) = pi/6;
@@ -150,19 +147,20 @@ args.lbx(n_states*(N+1)+5:n_controls:n_states*(N+1)+n_controls*N,1) = -pi/4; arg
 % THE SIMULATION LOOP SHOULD START FROM HERE
 %-------------------------------------------
 t0 = 0;
-x0 = zeros(13, 1); x0(1) = 0; x0(2) = 0; x0(3) = 0;% initial state
+x0 = zeros(13, 1); x0(1) = 0; x0(2) = 0; x0(3) = 0;x0(10) = 0;% initial state
 
-xs = zeros(13, 1); xs(1) = 0; xs(2) = 0; xs(3) = -5; % goal state
+xs = zeros(13, 1); xs(1) = 0; xs(2) = 0; xs(3) = 0;xs(10) = 0; % goal state
 
 xx(:,1) = x0; % xx contains the history of states
+
 t(1) = t0;
 
-u_trim = [7.4270*9.81; 0.0; 0.0; 0.0;0.0];
+u_trim = [0; 0.0; 0.0; 0.0;0.0];
 
 u0 = repmat(u_trim,1,N)'; % control inputs for each robot
 X0 = repmat(x0,1,N+1)'; % initialization of the states decision variables
 
-sim_tim = 15; % Maximum simulation time
+sim_tim = 20; % Maximum simulation time
 
 % Start MPC
 mpciter = 0;
@@ -173,22 +171,19 @@ u_cl=[];
 % than 10^-6 and the number of mpc steps is less than its maximum
 % value.
 tic
-while(norm((x0(1:3)-xs(1:3)),2) > 5e-2 && mpciter < sim_tim / dt)
+while( mpciter < sim_tim / dt)
 %while(mpciter < sim_tim / dt)
-    %current_time = mpciter * dt;
-    args.p   = [x0;xs]; % set the values of the parameters vector
-    %----------------------------------------------------------------------
-%     args.p(1:n_states) = x0; % initial condition of the robot posture
-%     for k = 1:N %new - set the reference to track
-%         t_predict = current_time + (k-1)*dt; % predicted time instant
-%         z_ref = -0.15*t_predict-2.0; 
-%         if z_ref <= -3 % the trajectory end is reached
-%             z_ref = -3; 
-%         end
-%         args.p(nvar*k-3:nvar*k+8) = [0.0, 0.0, z_ref, 0.0, 0.0, 0.0, 0.0, 0.0, -0.15, 0.0, 0.0, 0.0];
-%         args.p(nvar*k+9:nvar*k+12) = u_trim;
-%     end
-    %---------------------------------------------------------------------- 
+    current_time = mpciter * dt;
+    args.p(1:n_states) = x0; % initial condition of the robot posture
+    for k = 1:N %new - set the reference to track
+        t_predict = current_time + (k-1)*dt; % predicted time instant
+        Vx_ref = 2*t_predict; Vy_ref = 0; Vz_ref = 0;
+        if Vx_ref >= 24 % the trajectory end is reached
+            Vx_ref = 24; Vy_ref = 0; Vz_ref = 0;
+        end
+        args.p(n_states*k+1:n_states*k+3) = [Vx_ref; Vy_ref; Vz_ref];
+        args.p(n_states*k+4:n_states*k+13) = zeros(1,10);
+    end
     % initial value of the optimization variables
     args.x0  = [reshape(X0',n_states*(N+1),1);reshape(u0',n_controls*N,1)];
     sol = solver('x0', args.x0, 'lbx', args.lbx, 'ubx', args.ubx,...
@@ -204,10 +199,9 @@ while(norm((x0(1:3)-xs(1:3)),2) > 5e-2 && mpciter < sim_tim / dt)
     xx(:,mpciter+2) = x0;
     X0 = reshape(full(sol.x(1:n_states*(N+1)))',n_states,N+1)'; % get solution TRAJECTORY
     % Shift trajectory to initialize the next step
-   
     X0 = [X0(2:end,:);X0(end,:)];
-    mpciter
-    ss_error = norm((x0(3)-xs(3)),2)
+    mpciter;
+    ss_error = norm((x0-xs),2)
     mpciter = mpciter + 1;
 end
 toc

@@ -41,20 +41,19 @@ function Xdot = quad_dynamics(X, U)
 
     % x(1:3) update equation
     F_aero = CalcAeroForce(V,rpy);
-    accel = CalcAccel(F_aero,Thrust,rpy,tilt_angle);
-    accel = accel + [0;0;g];
+    accel = CalcAccel(F_aero,Thrust,rpy,tilt_angle)+[0;0;g];
+
 
     % x(7:9) update equation
     body_rate_sp = diag([5,5,0])* (rpy_MPC - rpy);
-
     Torque = diag([5,5,0]) * (body_rate_sp - rpy_dot) + diag([2,2,0]) * (last_rpy_dot - rpy_dot);
 
-    Xdot = SX.sym('Xdot',13);
-    Xdot(1:3) = accel;
-    Xdot(4:6) = [roll_dot;pitch_dot;yaw_dot];
-    Xdot(7:9) = I_inv*(Torque);
-    Xdot(10) = Tilt_speed;
-    Xdot(11:13) = [roll_dot_last;pitch_dot_last;yaw_dot_last];
+    Xdot = [accel;roll_dot;pitch_dot;yaw_dot;I_inv*(Torque);Tilt_speed;roll_dot_last;pitch_dot_last;yaw_dot_last];
+%     Xdot(1:3) = accel;
+%     Xdot(4:6) = [roll_dot;pitch_dot;yaw_dot];
+%     Xdot(7:9) = I_inv*(Torque);
+%     Xdot(10) = Tilt_speed;
+%     Xdot(11:13) = [roll_dot_last;pitch_dot_last;yaw_dot_last];
 
 end
 
@@ -75,7 +74,6 @@ function Rot_BI = GetRotationMatrix(roll, pitch, yaw)
 end
 
 function accel = CalcAccel(F_a,T,rpy,tilt)
-        
         Mass = 7.4270;
 
         RBR = [sin(tilt);
@@ -110,6 +108,7 @@ f4 = 1;
 foo = blend(f3, f4, 20, dist);
 
 coeff = foo(air_speed_norm);
+
 end
 
 function force = CalcAeroForce(V,rpy)
@@ -144,7 +143,6 @@ drag = coeff * drag;
 lateral = coeff * lateral;
 lift = coeff * lift;
 force = R_WB * [-drag; lateral;-lift];
-force = [0;0;0];
 end
 
 %% piecewise blending
