@@ -82,30 +82,21 @@ function Rot_BI = GetRotationMatrix(roll, pitch, yaw)
 end
 
 function accel = CalcAccel(F_a,T,rpy,tilt)
-Mass = 7.4270;
+        Mass = 7.4270;
 
-RBR_1 = [sin(tilt(1));
-    0;
-    -cos(tilt(1))];
-RBR_2 = [sin(tilt(2));
-    0;
-    -cos(tilt(2))];
-RBR_3 = [sin(tilt(3));
-    0;
-    -cos(tilt(3))];
-RBR_4 = [sin(tilt(4));
-    0;
-    -cos(tilt(4))];
+        RBR = [sin(tilt);
+                   0;
+              -cos(tilt)];
 
-T_Body = (RBR_1+RBR_2+RBR_3+RBR_4).*T/4 ;
+        T_Body = RBR+RBR+RBR+RBR ;
 
-F_tot = F_a + T_Body;
+        F_tot = F_a + T_Body;
 
-RNI = GetRotationMatrix(rpy(1),rpy(2),rpy(3));
-rbi = RNI'; % Body to inertial matrix
-F_Inertial = rbi * F_tot;
+        RNI = GetRotationMatrix(rpy(1),rpy(2),rpy(3));
+        rbi = RNI'; % Body to inertial matrix
+        F_Inertial = rbi * F_tot;
 
-accel = F_Inertial / Mass;
+        accel = F_Inertial / Mass;
 end
 
 function coeff = aero_blending(air_speed_norm)
@@ -184,7 +175,6 @@ lateral = coeff * lateral;
 lift = coeff * lift;
 
 force = R_WB * [-drag; lateral;-lift];
-force = [0;0;0];
 end
 
 
