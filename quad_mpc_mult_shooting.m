@@ -57,7 +57,12 @@ tilt_speed_4 = SX.sym('tilt_speed_4');
 tilt_speed = [tilt_speed_1;tilt_speed_2;tilt_speed_3;tilt_speed_4];
 
 % Thrust
-Thrust = SX.sym('Thrust');
+Thrust_1 = SX.sym('Thrust_1');
+Thrust_2 = SX.sym('Thrust_2');
+Thrust_3 = SX.sym('Thrust_3');
+Thrust_4 = SX.sym('Thrust_4');
+Thrust = [Thrust_1;Thrust_2;Thrust_3;Thrust_4];
+
 % Control input
 controls= [Thrust; tilt_speed; rpy_MPC];
 
@@ -79,7 +84,7 @@ g = [];  % constraints vector
 Q_v = diag([20 10 50]);
 Q_rpy = diag([10 20 10]);
 Q_rpy_dot = diag([10 10 10]);
-Q_u = diag([0.0025 1 1 1 1 10 10 10]);
+Q_u = diag([0.0025 0.0025 0.0025 0.0025 1 1 1 1 10 10 10]);
 q_ref = [5, 0.1, 0.1]';
 
 st  = X(:,1); % initial state
@@ -96,9 +101,9 @@ for k = 1:N
         +(st(7:9))' * Q_rpy_dot * (st(7:9))...
         + con' * Q_u * con ;
     obj_soft_tilt = exp(-0.332*Velocity_body(1)*(st(10)*180/pi)+1.8*(st(10)*180/pi)+(-0.477)*Velocity_body(1)-2.303)...
-    + exp(-0.332*Velocity_body(1)*(st(11)*180/pi)+1.8*(st(10)*180/pi)+(-0.477)*Velocity_body(1)-2.303)...
-    + exp(-0.332*Velocity_body(1)*(st(12)*180/pi)+1.8*(st(10)*180/pi)+(-0.477)*Velocity_body(1)-2.303)...
-    + exp(-0.332*Velocity_body(1)*(st(13)*180/pi)+1.8*(st(10)*180/pi)+(-0.477)*Velocity_body(1)-2.303);
+    + exp(-0.332*Velocity_body(1)*(st(11)*180/pi)+1.8*(st(11)*180/pi)+(-0.477)*Velocity_body(1)-2.303)...
+    + exp(-0.332*Velocity_body(1)*(st(12)*180/pi)+1.8*(st(12)*180/pi)+(-0.477)*Velocity_body(1)-2.303)...
+    + exp(-0.332*Velocity_body(1)*(st(13)*180/pi)+1.8*(st(13)*180/pi)+(-0.477)*Velocity_body(1)-2.303);
 
     objective_function = objective_function +  obj_stateinput + obj_soft_tilt;
 
@@ -150,16 +155,20 @@ args.lbx(15:n_states:n_states*(N+1),1) = -pi; args.ubx(15:n_states:n_states*(N+1
 args.lbx(16:n_states:n_states*(N+1),1) = -pi; args.ubx(16:n_states:n_states*(N+1),1) = pi;
 
 args.lbx(n_states*(N+1)+1:n_controls:n_states*(N+1)+n_controls*N,1) = 0; args.ubx(n_states*(N+1)+1:n_controls:n_states*(N+1)+n_controls*N,1) = 105; %thrust in Newton calculated from max pitch angle and weight
-args.lbx(n_states*(N+1)+2:n_controls:n_states*(N+1)+n_controls*N,1) = -inf; args.ubx(n_states*(N+1)+2:n_controls:n_states*(N+1)+n_controls*N,1) = inf;%tilt speed
-args.lbx(n_states*(N+1)+3:n_controls:n_states*(N+1)+n_controls*N,1) = -inf; args.ubx(n_states*(N+1)+3:n_controls:n_states*(N+1)+n_controls*N,1) = inf; 
-args.lbx(n_states*(N+1)+4:n_controls:n_states*(N+1)+n_controls*N,1) = -inf; args.ubx(n_states*(N+1)+4:n_controls:n_states*(N+1)+n_controls*N,1) = inf;
-args.lbx(n_states*(N+1)+5:n_controls:n_states*(N+1)+n_controls*N,1) = -inf; args.ubx(n_states*(N+1)+5:n_controls:n_states*(N+1)+n_controls*N,1) = inf;
-args.lbx(n_states*(N+1)+6:n_controls:n_states*(N+1)+n_controls*N,1) = -pi/4; args.ubx(n_states*(N+1)+6:n_controls:n_states*(N+1)+n_controls*N,1) = pi/4; %rpy_MPC
-args.lbx(n_states*(N+1)+7:n_controls:n_states*(N+1)+n_controls*N,1) = -pi/4; args.ubx(n_states*(N+1)+7:n_controls:n_states*(N+1)+n_controls*N,1) = pi/6;
-args.lbx(n_states*(N+1)+8:n_controls:n_states*(N+1)+n_controls*N,1) = -pi/4; args.ubx(n_states*(N+1)+8:n_controls:n_states*(N+1)+n_controls*N,1) = pi/4;
+args.lbx(n_states*(N+1)+2:n_controls:n_states*(N+1)+n_controls*N,1) = 0; args.ubx(n_states*(N+1)+2:n_controls:n_states*(N+1)+n_controls*N,1) = 105; 
+args.lbx(n_states*(N+1)+3:n_controls:n_states*(N+1)+n_controls*N,1) = 0; args.ubx(n_states*(N+1)+3:n_controls:n_states*(N+1)+n_controls*N,1) = 105; 
+args.lbx(n_states*(N+1)+4:n_controls:n_states*(N+1)+n_controls*N,1) = 0; args.ubx(n_states*(N+1)+4:n_controls:n_states*(N+1)+n_controls*N,1) = 105; 
+
+args.lbx(n_states*(N+1)+5:n_controls:n_states*(N+1)+n_controls*N,1) = -inf; args.ubx(n_states*(N+1)+5:n_controls:n_states*(N+1)+n_controls*N,1) = inf;%tilt speed
+args.lbx(n_states*(N+1)+6:n_controls:n_states*(N+1)+n_controls*N,1) = -inf; args.ubx(n_states*(N+1)+6:n_controls:n_states*(N+1)+n_controls*N,1) = inf; 
+args.lbx(n_states*(N+1)+7:n_controls:n_states*(N+1)+n_controls*N,1) = -inf; args.ubx(n_states*(N+1)+7:n_controls:n_states*(N+1)+n_controls*N,1) = inf;
+args.lbx(n_states*(N+1)+8:n_controls:n_states*(N+1)+n_controls*N,1) = -inf; args.ubx(n_states*(N+1)+8:n_controls:n_states*(N+1)+n_controls*N,1) = inf;
+
+args.lbx(n_states*(N+1)+9:n_controls:n_states*(N+1)+n_controls*N,1) = -pi/4; args.ubx(n_states*(N+1)+9:n_controls:n_states*(N+1)+n_controls*N,1) = pi/4; %rpy_MPC
+args.lbx(n_states*(N+1)+10:n_controls:n_states*(N+1)+n_controls*N,1) = -pi/4; args.ubx(n_states*(N+1)+10:n_controls:n_states*(N+1)+n_controls*N,1) = pi/6;
+args.lbx(n_states*(N+1)+11:n_controls:n_states*(N+1)+n_controls*N,1) = -pi/4; args.ubx(n_states*(N+1)+11:n_controls:n_states*(N+1)+n_controls*N,1) = pi/4;
 %----------------------------------------------
 % ALL OF THE ABOVE IS JUST A PROBLEM SET UP
-
 
 
 % THE SIMULATION LOOP SHOULD START FROM HERE
@@ -173,12 +182,12 @@ xx(:,1) = x0; % xx contains the history of states
 
 t(1) = t0;
 
-u_trim = [9.81*7.2; 0.0 ;0 ;0 ;0 ; 0.0; 0.0;0.0];
+u_trim = [9.81*7.2;9.81*7.2;9.81*7.2;9.81*7.2; 0.0 ;0 ;0 ;0 ; 0.0; 0.0;0.0];
 
 u0 = repmat(u_trim,1,N)'; % control inputs for each robot
 X0 = repmat(x0,1,N+1)'; % initialization of the states decision variables
 
-sim_tim = 10; % Maximum simulation time
+sim_tim = 15; % Maximum simulation time
 
 % Start MPC
 mpciter = 0;
